@@ -11,6 +11,7 @@ int max_qual = 0;
 float max_low_base = 0;
 bool invert = false;
 int qual_base = 33;
+bool count_bases = false;
 
 void print_usage(const char *cmd)
 {
@@ -28,6 +29,7 @@ void print_usage(const char *cmd)
 			"   -q <int>         A base is low quality if it is not higher than <int>, default: %d\n"
 			"   -v, --invert     Show filtered read pairs, default: no\n"
 			"   --q33 / --q64    Quality base, default: %d\n"
+			"   --count-bases    Count N bases or low quality bases for each read\n"
 			"\n", cmd, in_file, out_file, max_N, static_cast<int>(max_low_base), max_qual, qual_base);
 }
 
@@ -85,12 +87,14 @@ int filter_main(int argc, const char **argv)
 			qual_base = 64;
 		} else if (0 == strcmp(argv[i], "--q33")) {
 			qual_base = 33;
+		} else if (0 == strcmp(argv[i], "--count-bases")) {
+			count_bases = true;
 		} else {
 			fprintf(stderr, "Error: Unknown or unexpected parameter '%s'!\n", argv[i]);
 			return 1;
 		}
 	}
-	if (max_N <= 0 && max_low_base <= 0) {
+	if (!count_bases && max_N <= 0 && max_low_base <= 0) {
 		print_usage(argv[0]);
 		return 1;
 	}
@@ -114,6 +118,14 @@ int filter_main(int argc, const char **argv)
 			if (!fgets(buf[i], sizeof(buf[i]), fp_in)) goto out;
 		}
 
+		static bool first = true;
+		if (first) {
+			first = false;
+			if (count_bases) {
+				fprintf(fp_out, "#Name\tN\tLow_qual(<=%d)\n", max_qual);
+			}
+		}
+
 		bool filter = false;
 		for (int i = 0; i < 2; ++i) {
 			int N_count = 0;
@@ -130,28 +142,36 @@ int filter_main(int argc, const char **argv)
 				}
 				low_base_count += (qual <= max_qual);
 			}
-			if (max_N > 0) {
-				if (N_count > max_N) {
-					filter = true;
-					break;
+
+			if (count_bases) {
+				for (size_t j = 0; buf[4 * i][j] > ' '; ++j) {
+					fprintf(fp_out, "%c", buf[4 * i][j]);
 				}
-			}
-			if (max_low_base > 0) {
-				if (max_low_base < 1) {
-					if (low_base_count > (strlen(buf[4 * i + 3]) - 1) * max_low_base) {
+				fprintf(fp_out, "\t%d\t%d\n", N_count, low_base_count);
+			} else {
+				if (max_N > 0) {
+					if (N_count > max_N) {
 						filter = true;
 						break;
 					}
-				} else {
-					if (low_base_count > max_low_base) {
-						filter = true;
-						break;
+				}
+				if (max_low_base > 0) {
+					if (max_low_base < 1) {
+						if (low_base_count > (strlen(buf[4 * i + 3]) - 1) * max_low_base) {
+							filter = true;
+							break;
+						}
+					} else {
+						if (low_base_count > max_low_base) {
+							filter = true;
+							break;
+						}
 					}
 				}
 			}
 		}
 
-		if (filter == invert) {
+		if (!count_bases && filter == invert) {
 			for (int i = 0; i < 8; ++i) {
 				fprintf(fp_out, "%s", buf[i]);
 			}
