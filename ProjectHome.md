@@ -1,0 +1,1 @@
+Process FastQ files, which store NGS (Next Generation Sequencing) data, especially in Linux pipe.
